@@ -1,6 +1,7 @@
 package com.dc.raft.command;
 
 import lombok.Getter;
+import lombok.Setter;
 
 import java.net.InetSocketAddress;
 import java.util.Map;
@@ -15,6 +16,7 @@ public abstract class RequestCommand extends RemoteCommand {
     private String requestId;
 
     @Getter
+    @Setter
     private InetSocketAddress socketAddress;
 
     /**

@@ -13,6 +13,7 @@ public class RequestClients {
 
     public static synchronized void addClient(RaftPeers.PeerNode peerNode) {
         GrpcClient grpcClient = new GrpcClient(peerNode.getAddress());
+        grpcClient.start();
         requestClients.putIfAbsent(peerNode, grpcClient);
     }
 

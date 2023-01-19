@@ -115,11 +115,6 @@
         <!-- grpc 依赖-->
 
         <!-- gRPC dependency start -->
-        <dependency>
-            <groupId>io.grpc</groupId>
-            <artifactId>grpc-netty-shaded</artifactId>
-            <version>${grpc-java.version}</version>
-        </dependency>
 
         <dependency>
             <groupId>com.google.protobuf</groupId>
@@ -133,6 +128,17 @@
             <version>${grpc-java.version}</version>
         </dependency>
 
+        <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-netty</artifactId>
+            <version>${grpc-java.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-netty-shaded</artifactId>
+            <version>${grpc-java.version}</version>
+        </dependency>
 
 
         <!-- gRPC dependency end -->
@@ -141,6 +147,14 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter</artifactId>
         </dependency>
+
+        <!--rocksdb-->
+        <dependency>
+            <groupId>org.rocksdb</groupId>
+            <artifactId>rocksdbjni</artifactId>
+            <version>5.14.3</version>
+        </dependency>
+
 
     </dependencies>
 

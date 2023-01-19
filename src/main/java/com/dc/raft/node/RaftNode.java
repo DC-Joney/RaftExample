@@ -2,13 +2,17 @@ package com.dc.raft.node;
 
 import com.dc.raft.LifeCycle;
 import com.dc.raft.RequestClients;
+import com.dc.raft.heartbeat.HeartBeatRequest;
+import com.dc.raft.heartbeat.HeartBeatResponse;
 import com.dc.raft.vote.VoteRequest;
 import com.dc.raft.vote.VoteResponse;
 import com.dc.raft.rpc.GrpcClient;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
 import java.util.Set;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
@@ -37,6 +41,7 @@ public class RaftNode implements LifeCycle {
     /**
      * 所有的Raft节点信息
      */
+    @Setter
     private RaftPeers raftPeers;
 
     /**
@@ -68,21 +73,25 @@ public class RaftNode implements LifeCycle {
     volatile RaftPeers.PeerNode votedFor;
 
 
+    public RaftNode() {
+        this.executorService = Executors.newScheduledThreadPool(2);
+    }
+
     @Override
     public void start() {
         if (START_STATE.compareAndSet(false, true)) {
-            executorService.schedule(electionTask, electionTask.getElectionTime(), TimeUnit.SECONDS);
-            executorService.schedule(heartBeakTask, heartBeakTask.getHeartBeatTick(), TimeUnit.SECONDS);
+            executorService.schedule(electionTask, electionTask.getElectionTime(), TimeUnit.MILLISECONDS);
+            executorService.scheduleWithFixedDelay(heartBeakTask,heartBeakTask.getHeartBeatTick(), heartBeakTask.getHeartBeatTick(), TimeUnit.MILLISECONDS);
         }
     }
 
 
     @Override
     public void stop() {
-
+        executorService.shutdown();
     }
 
-    public long getTerm(){
+    public long getTerm() {
         return currentTerm.get();
     }
 
@@ -90,12 +99,12 @@ public class RaftNode implements LifeCycle {
         return votedFor;
     }
 
-    public RaftNode setTerm(long newTerm){
+    public RaftNode setTerm(long newTerm) {
         this.currentTerm.set(newTerm);
         return this;
     }
 
-    public RaftNode voteFor(RaftPeers.PeerNode votedForNode){
+    public RaftNode voteFor(RaftPeers.PeerNode votedForNode) {
         this.votedFor = votedForNode;
         return this;
     }
@@ -104,7 +113,7 @@ public class RaftNode implements LifeCycle {
     /**
      * 将当前节点的状态设置为 nodeStatus
      */
-    public RaftNode markStatus(NodeStatus nodeStatus){
+    public RaftNode markStatus(NodeStatus nodeStatus) {
         this.nodeStatus = nodeStatus;
         return this;
     }
@@ -112,7 +121,7 @@ public class RaftNode implements LifeCycle {
     /**
      * 将传入的节点设置为leader节点
      */
-    public RaftNode setLeader(RaftPeers.PeerNode leader){
+    public RaftNode setLeader(RaftPeers.PeerNode leader) {
         this.raftPeers.setLeader(leader);
         return this;
     }
@@ -126,6 +135,7 @@ public class RaftNode implements LifeCycle {
 
     /**
      * 判断当前投票的节点是否是传入的候选节点
+     *
      * @param candidateNode 候选节点
      */
     public boolean voteIsCandidate(RaftPeers.PeerNode candidateNode) {
@@ -133,16 +143,28 @@ public class RaftNode implements LifeCycle {
     }
 
 
+    public RaftNode resetLastHeartBeatTime() {
+        this.lastHeartBeatTime = System.currentTimeMillis();
+        return this;
+    }
+
+    public RaftNode resetLastElectionTime() {
+        this.lastElectionTime = System.currentTimeMillis();
+        return this;
+    }
+
+
+
     /**
      * 用于接受心跳
      */
-    private static class HeartBeakTask implements Runnable {
+    private class HeartBeakTask implements Runnable {
 
 
         /**
          * 心跳间隔基数, 单位为：s
          */
-        public final long heartBeatTick = 5;
+        public final long heartBeatTick = 5 * 1000;
 
 
         public long getHeartBeatTick() {
@@ -151,7 +173,41 @@ public class RaftNode implements LifeCycle {
 
         @Override
         public void run() {
+            try {
+                if (nodeStatus != NodeStatus.LEADER) {
+                    return;
+                }
 
+                long currentTime = System.currentTimeMillis();
+
+                if (currentTime - lastHeartBeatTime < heartBeatTick)
+                    return;
+
+                for (RaftPeers.PeerNode peerNode : raftPeers.getPeerNodes()) {
+                    GrpcClient client = RequestClients.getClient(peerNode);
+                    HeartBeatRequest beatRequest = HeartBeatRequest.builder()
+                            .term(currentTerm.get())
+                            .leaderNode(raftPeers.getLeader())
+                            .build();
+
+                    log.info("Send heart beat message: {}", beatRequest);
+                    HeartBeatResponse response = client.request(beatRequest, Duration.ofSeconds(5));
+
+                    log.info("result response is: {}", response);
+                    if (response.isSuccess()) {
+                        //别人的任期大于自己，说明别人成了领导自己要跟随
+                        if (response.getTerm() > currentTerm.get()) {
+                            currentTerm.compareAndSet(currentTerm.get(), response.getTerm());
+                            votedFor = null;
+                            nodeStatus = NodeStatus.FOLLOWER;
+                        }
+                    }
+                }
+
+                lastHeartBeatTime = currentTime;
+            } catch (Exception error) {
+                log.error("send heartbeat error: ", error);
+            }
         }
     }
 
@@ -163,7 +219,7 @@ public class RaftNode implements LifeCycle {
         /**
          * 单位为 s
          */
-        public volatile AtomicLong election = new AtomicLong();
+        public volatile AtomicLong election = new AtomicLong(15 * 1000);
 
 
         public long getElectionTime() {
@@ -178,7 +234,8 @@ public class RaftNode implements LifeCycle {
 
             long currentTime = System.currentTimeMillis();
 
-            long electionTime = election.addAndGet(ThreadLocalRandom.current().nextInt(50));
+            long electionTime = election.addAndGet(ThreadLocalRandom.current().nextInt(100));
+            log.info("current electionTime is: {}", electionTime);
 
             if (lastElectionTime + electionTime < currentTime) {
                 scheduleNextTime();
@@ -196,7 +253,7 @@ public class RaftNode implements LifeCycle {
 
             Set<RaftPeers.PeerNode> peerNodes = raftPeers.getPeerNodes();
 
-            int successCount = 0;
+            int successCount = 1;
 
             for (RaftPeers.PeerNode peerNode : peerNodes) {
                 GrpcClient grpcClient = RequestClients.getClient(peerNode);
@@ -207,29 +264,38 @@ public class RaftNode implements LifeCycle {
                 voteRequest.setRequestAddress(raftPeers.getSelfAddress());
                 //将当前任期编号放入到请求中
                 voteRequest.setTerm(currentTerm.get());
-                VoteResponse response = grpcClient.request(voteRequest, Duration.ofSeconds(3));
-                if (response.isSuccess()) {
-                    if (response.isVoteGranted()) {
-                        successCount++;
-                    } else {
-                        long nodeTerm = response.getTerm();
-                        if (nodeTerm >= currentTime) {
-                            currentTime = nodeTerm;
+                log.info("Call rpc to remote address: {}", peerNode);
+                try {
+                    VoteResponse response = grpcClient.request(voteRequest, Duration.ofSeconds(8));
+                    log.info("Vote response result is: {}", response);
+                    if (response.isSuccess()) {
+                        if (response.isVoteGranted()) {
+                            successCount++;
+                        } else {
+                            long nodeTerm = response.getTerm();
+                            if (nodeTerm >= currentTime) {
+                                currentTime = nodeTerm;
+                            }
                         }
                     }
+                } catch (Exception e) {
+                    log.error("execute error, cause is: ", e);
                 }
             }
 
 
+            log.info("successCount is {}: ", successCount);
             if (successCount > raftPeers.nodeCount() / 2) {
                 nodeStatus = NodeStatus.LEADER;
                 raftPeers.markSelfLeader();
+                log.info("Leader peer is :{}", raftPeers.getLeader());
                 //TODO 当自己成为leader时,要同步日志
             }
 
             //
             votedFor = null;
 
+            log.info("evicate next time");
             //触发下一次定时任务
             scheduleNextTime();
         }

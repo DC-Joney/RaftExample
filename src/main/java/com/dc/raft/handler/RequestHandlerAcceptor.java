@@ -9,17 +9,26 @@ import com.dc.raft.network.Payload;
 import com.dc.raft.rpc.PayloadRegistry;
 import com.google.protobuf.ByteString;
 import io.grpc.stub.StreamObserver;
+import lombok.AccessLevel;
+import lombok.experimental.FieldDefaults;
 
 import java.nio.charset.Charset;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 /**
  * 用于处理rpc请求，并且返回response
  */
+@FieldDefaults(level = AccessLevel.PRIVATE)
 public class RequestHandlerAcceptor  {
 
-    List<RequestHandler> requestHandlers = new ArrayList<>();
+    final Collection<RequestHandler> requestHandlers;
+
+
+    public RequestHandlerAcceptor(Collection<RequestHandler> requestHandlers) {
+        this.requestHandlers = requestHandlers;
+    }
 
     /**
      * 添加请求处理器
@@ -52,6 +61,7 @@ public class RequestHandlerAcceptor  {
         if (RequestCommand.class.isAssignableFrom(jsonClass)) {
             T request = JSONObject.parseObject(bytes.toByteArray(), jsonClass);
             request.putAllHeader(metadta.getHeadersMap());
+            return request;
         }
 
         throw new UnsupportedOperationException("Cannot serialize class: " + jsonClass.getCanonicalName());
@@ -59,7 +69,7 @@ public class RequestHandlerAcceptor  {
 
     private Payload convertResponse(ResponseCommand responseCommand) {
         Metadta metadta = Metadta.newBuilder()
-                .setType(responseCommand.getClass().getName()).build();
+                .setType(responseCommand.getClass().getSimpleName()).build();
 
         String jsonStr = JSON.toJSONString(responseCommand);
 

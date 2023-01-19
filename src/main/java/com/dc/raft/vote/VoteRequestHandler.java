@@ -1,6 +1,5 @@
 package com.dc.raft.vote;
 
-import com.dc.raft.ResultHandler;
 import com.dc.raft.annotation.RpcHandler;
 import com.dc.raft.command.RequestCommand;
 import com.dc.raft.command.ResponseCommand;
@@ -9,6 +8,8 @@ import com.dc.raft.network.Metadta;
 import com.dc.raft.node.NodeStatus;
 import com.dc.raft.node.RaftNode;
 import com.dc.raft.node.RaftPeers;
+import lombok.AccessLevel;
+import lombok.experimental.FieldDefaults;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -16,18 +17,21 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * 用于处理投票请求
  */
 @RpcHandler
+@FieldDefaults(level = AccessLevel.PRIVATE)
 public class VoteRequestHandler implements RequestHandler {
 
-    /**
-     * 当前 Raft节点
-     */
-    RaftNode raftNode;
+    final AtomicBoolean voteLock = new AtomicBoolean(false);
 
-    AtomicBoolean voteLock = new AtomicBoolean(false);
+    private final RaftNode raftNode;
+
+    public VoteRequestHandler(RaftNode raftNode){
+        this.raftNode = raftNode;
+    }
 
     @Override
     public  ResponseCommand handle(RequestCommand request) {
         try {
+
             VoteRequest voteRequest = (VoteRequest) request;
             RaftPeers.PeerNode candidateNode = voteRequest.getCandidateNode();
 
@@ -52,6 +56,7 @@ public class VoteRequestHandler implements RequestHandler {
             voteLock.set(false);
         }
     }
+
 
     @Override
     public boolean support(Metadta metadta) {

@@ -3,6 +3,7 @@ package com.dc.raft.handler;
 import com.dc.raft.command.RequestCommand;
 import com.dc.raft.command.ResponseCommand;
 import com.dc.raft.network.Metadta;
+import com.dc.raft.node.RaftNode;
 
 public interface RequestHandler {
 
@@ -14,6 +15,5 @@ public interface RequestHandler {
 
 
     boolean support(Metadta metadta);
-
 
 }

@@ -38,6 +38,16 @@ public class RaftPeers implements Serializable {
         return this;
     }
 
+    public RaftPeers addPeers(Set<PeerNode> peerNodes) {
+        //如果节点是当前节点则不添加
+        if (!peerNodes.contains(self)) {
+            peerNodes.remove(self);
+        }
+
+        peerNodes.forEach(this::addPeer);
+        return this;
+    }
+
     /**
      * 将自己设置为leader
      */
@@ -70,6 +80,7 @@ public class RaftPeers implements Serializable {
     @Getter
     @Setter
     @AllArgsConstructor(staticName = "create")
+    @NoArgsConstructor
     public static class PeerNode {
         private InetSocketAddress address;
 

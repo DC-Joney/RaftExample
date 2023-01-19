@@ -1,9 +1,6 @@
 package com.dc.raft.rpc;
 
-import com.dc.raft.AnnotationScans;
 import com.dc.raft.LifeCycle;
-import com.dc.raft.annotation.RpcHandler;
-import com.dc.raft.handler.RequestHandler;
 import com.dc.raft.handler.RequestHandlerAcceptor;
 import com.dc.raft.network.Payload;
 import com.dc.raft.network.RaftRequestGrpc;
@@ -11,17 +8,17 @@ import io.grpc.*;
 import io.grpc.protobuf.ProtoUtils;
 import io.grpc.stub.ServerCalls;
 import io.grpc.util.MutableHandlerRegistry;
-import lombok.SneakyThrows;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.util.Set;
 
 /**
  * Rpc Server 用于接受RPC请求处理
  *
  * @author zhangyang
  */
+@Slf4j
 public class GrpcServer implements LifeCycle {
 
     private Server server;
@@ -77,6 +74,7 @@ public class GrpcServer implements LifeCycle {
                     })
                     .build();
             server.start();
+            log.info("Server start port is : {}", port);
         } catch (IOException e) {
             throw new RuntimeException("server start error");
         }

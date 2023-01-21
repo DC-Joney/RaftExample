@@ -43,7 +43,7 @@ public class RequestHandlerAcceptor {
         try {
             RequestCommand requestCommand = parseRequest(request);
             ResponseCommand responseCommand = requestHandlers.stream()
-                    .filter(requestHandler -> requestHandler.support(metadta))
+                    .filter(requestHandler -> support(requestHandler, metadta))
                     .findFirst()
                     .map(handler -> handler.handle(requestCommand))
                     .orElseGet(this::notFindHandlerCommand);
@@ -58,6 +58,10 @@ public class RequestHandlerAcceptor {
         }
 
         responseObserver.onCompleted();
+    }
+
+    private boolean support(RequestHandler requestHandler, Metadta metadta) {
+        return requestHandler.supportType().getSimpleName().equals(metadta.getType());
     }
 
     private ResponseCommand notFindHandlerCommand() {

@@ -64,6 +64,10 @@ public class GrpcClient implements LifeCycle, Requester {
         requestStub = RaftRequestGrpc.newFutureStub(managedChannel);
     }
 
+    @Override
+    public <T extends ResponseCommand> T request(RequestCommand request) {
+        return request(request, Duration.ofSeconds(5));
+    }
 
     @Override
     public <T extends ResponseCommand> T request(RequestCommand request, Duration timeout) {

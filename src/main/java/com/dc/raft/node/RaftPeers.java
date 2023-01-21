@@ -7,6 +7,7 @@ import java.io.Serializable;
 import java.net.InetSocketAddress;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -113,7 +114,6 @@ public class RaftPeers implements Serializable, Iterable<RaftPeers.PeerNode> {
     /**
      * 用于表示一个Peer 节点
      */
-    @EqualsAndHashCode
     @Getter
     @Setter
     @AllArgsConstructor(staticName = "create")
@@ -124,6 +124,19 @@ public class RaftPeers implements Serializable, Iterable<RaftPeers.PeerNode> {
         @Override
         public String toString() {
             return address.toString();
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            PeerNode peerNode = (PeerNode) o;
+            return Objects.equals(address, peerNode.address);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(address);
         }
     }
 }

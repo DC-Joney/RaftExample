@@ -18,6 +18,6 @@ public interface RequestHandler {
      * 判断当前RequestHandler 是否支持对应的 type
      * @param metadata 元数据
      */
-    boolean support(Metadta metadata);
+    Class<?> supportType();
 
 }

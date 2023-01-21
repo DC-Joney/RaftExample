@@ -20,11 +20,9 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -108,6 +106,8 @@ public class RaftNode implements LifeCycle {
             //状态机 用于添加数据
             stateMachine = new RocksStateMachine(raftPeers.getSelf());
             logStore.start();
+
+            stateMachine.start();
         }
     }
 
@@ -191,6 +191,42 @@ public class RaftNode implements LifeCycle {
     public RaftPeers.PeerNode getSelfPeer() {
         return raftPeers.getSelf();
     }
+
+
+    private final AtomicBoolean changeTermLock = new AtomicBoolean();
+
+    public boolean tryTermLock(){
+        return changeTermLock.compareAndSet(false, true);
+    }
+
+
+    public boolean termUnlock(){
+        return changeTermLock.compareAndSet(true, false);
+    }
+
+
+    /**
+     * @param prevTerm 当前的term任期
+     * @param newTerm  即将要改变的term任期
+     */
+    public boolean compareAndSwap(long prevTerm, long newTerm, RaftPeers.PeerNode votedFor) {
+        //如果传入的任期与当前任期相同, 那么说明当前节点已经做过操作了，直接返回false
+        if (newTerm == currentTerm.get()) {
+            return false;
+        }
+
+        //否则的话通过CAS 保证只有一个节点可以操作成功
+        // 1、当前节点变为候选节点时，需要自增term，并且将voteFor设置为自己
+        // 2、候选节点调用 voteRpc请求当前节点时，如果请求节点的term > 当前节点，则将term设置为请求节点的term，voteFor设置为请求节点
+        // 为了解决以上1、2冲突时的场景，保证在当前节点election超时变为候选节点之前，自己没有给其他节点投过票
+        if (currentTerm.compareAndSet(prevTerm, newTerm)) {
+            this.votedFor = votedFor;
+            return true;
+        }
+
+        return false;
+    }
+
 
     /**
      * 用于接受心跳
@@ -305,7 +341,6 @@ public class RaftNode implements LifeCycle {
             setElectionTimeout(electionTimeout - SCHEDULE_PERIOD_TIME);
 
 
-
             //如果大于0表示还没有到达选举时间
             if (electionTimeout > 0) {
                 return;
@@ -328,11 +363,15 @@ public class RaftNode implements LifeCycle {
             nodeStatus = NodeStatus.CANDIDATE;
             log.info("[{}] The current node {} can be CANDIDATE node", raftPeers.getSelf(), raftPeers.getSelf());
 
+
+            long term = currentTerm.get();
+
+            //todo:
             //将当前节点的任期 + 1
             currentTerm.incrementAndGet();
-
             //将票投给自己
             votedFor = raftPeers.getSelf();
+
 
             //获取其他raft节点
             Set<RaftPeers.PeerNode> peerNodes = raftPeers.getPeerNodes();
@@ -402,6 +441,8 @@ public class RaftNode implements LifeCycle {
                 //立即向其他节点发送心跳
                 executorService.execute(heartBeakTask);
                 //TODO 当自己成为leader时,要同步日志
+
+                initIndex();
             }
 
             //将voteFor设置为null，在失败的情况下可以保证其他节点的正常选举
@@ -411,6 +452,53 @@ public class RaftNode implements LifeCycle {
 
         }
 
+    }
+
+    /* ============ 所有服务器上经常变的 ============= */
+
+    /**
+     * 已知被提交的最大日志条目索引
+     */
+    @Getter
+    @Setter
+    volatile long commitIndex;
+
+    /**
+     * 已被状态机执行的最大日志条目索引
+     */
+    @Setter
+    @Getter
+    volatile long lastApplied = 0;
+
+    /* ========== 在领导人里经常改变的(选举后重新初始化) ================== */
+
+    /**
+     * 对于每一个follower, 记录需要发给他的下一条日志条目的索引
+     */
+    @Getter
+    Map<RaftPeers.PeerNode, Long> nextIndexes;
+
+    /**
+     * 对于每一个follower, 记录已经复制完成的最大日志条目索引
+     */
+    @Getter
+    Map<RaftPeers.PeerNode, Long> matchIndexes;
+
+    /**
+     * 初始化所有的 nextIndex 值为自己的最后一条日志的 index + 1. 如果下次 RPC 时, 跟随者和leader 不一致,就会失败.
+     * 那么 leader 尝试递减 nextIndex 并进行重试.最终将达成一致.
+     */
+    private void initIndex() {
+        nextIndexes = new ConcurrentHashMap<>();
+        matchIndexes = new ConcurrentHashMap<>();
+        for (RaftPeers.PeerNode peer : raftPeers.getPeerNodes()) {
+            nextIndexes.put(peer, logStore.getLastIndex() + 1);
+            matchIndexes.put(peer, 0L);
+        }
+    }
+
+    public long getNextIndex(RaftPeers.PeerNode peerNode) {
+        return nextIndexes.getOrDefault(peerNode, 0L);
     }
 
 }

@@ -1,5 +1,7 @@
 *.iml
 .idea/
 target/
-raft
+raft/8080
+raft/8081
+raft/8082
 test.db

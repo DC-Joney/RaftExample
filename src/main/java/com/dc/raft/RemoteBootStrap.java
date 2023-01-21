@@ -22,13 +22,10 @@ public abstract class RemoteBootStrap implements LifeCycle {
      */
     protected final RaftPeers raftPeers;
 
-    private List<RequestHandler> handlers;
-
     public RemoteBootStrap(RaftPeers.PeerNode self, Set<RaftPeers.PeerNode> others) {
-        raftPeers = new RaftPeers(self.getAddress());
+        raftPeers = new RaftPeers(self);
         raftPeers.addPeers(others);
     }
-
 
     @Override
     public void start() throws Exception {
@@ -44,10 +41,14 @@ public abstract class RemoteBootStrap implements LifeCycle {
     protected abstract void initClient(Set<RequestHandler> requestHandlers);
 
 
+    @Override
+    public void stop() {
+        raftNode.stop();
+    }
+
     public Set<RequestHandler> scanHandler(RaftNode raftNode) throws Exception {
         Set<Class<?>> handlerClasses = AnnotationScans.scan(RpcHandler.class, RequestHandler.class, scanPackageHandlers().toArray(new String[0]));
         Set<RequestHandler> requestHandlerSets = Sets.newHashSet();
-
         for (Class<?> handlerClass : handlerClasses) {
             boolean defaultConstructor = false;
             Constructor<?> instanceConstructor = ClassUtils.getConstructorIfAvailable(handlerClass, RaftNode.class);
@@ -61,12 +62,12 @@ public abstract class RemoteBootStrap implements LifeCycle {
                 throw new RuntimeException("Cannot resolve default constructor");
             }
 
+            //通过构造器创建相应的RequestHandler，保证单例
             RequestHandler requestHandler = defaultConstructor ? (RequestHandler) BeanUtils.instantiateClass(instanceConstructor)
                     : (RequestHandler) BeanUtils.instantiateClass(instanceConstructor, raftNode);
 
             requestHandlerSets.add(requestHandler);
         }
-
         return requestHandlerSets;
     }
 

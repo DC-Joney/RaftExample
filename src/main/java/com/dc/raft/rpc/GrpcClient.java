@@ -2,16 +2,17 @@ package com.dc.raft.rpc;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
-import com.dc.Requester;
+import com.dc.raft.Requester;
 import com.dc.raft.LifeCycle;
 import com.dc.raft.command.RequestCommand;
 import com.dc.raft.command.ResponseCommand;
+import com.dc.raft.exception.RaftException;
+import com.dc.raft.exception.RaftSerializeException;
 import com.dc.raft.network.Metadta;
 import com.dc.raft.network.Payload;
 import com.dc.raft.network.RaftRequestGrpc;
 import com.google.protobuf.ByteString;
 import io.grpc.*;
-import io.grpc.stub.ClientCalls;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
@@ -22,9 +23,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.Charset;
 import java.time.Duration;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 @Slf4j
 @FieldDefaults(level = AccessLevel.PRIVATE)
@@ -68,19 +67,25 @@ public class GrpcClient implements LifeCycle, Requester {
 
     @Override
     public <T extends ResponseCommand> T request(RequestCommand request, Duration timeout) {
-        Payload payload = convertRequest(request);
         Payload response;
         try {
+            Payload payload = convertRequest(request);
             log.info("rpc request start, request is: {}", request);
             response = requestStub.request(payload).get(timeout.getSeconds(), TimeUnit.SECONDS);
-        } catch (InterruptedException | ExecutionException | TimeoutException e) {
-            throw new RuntimeException("Server error", e);
+        } catch (Exception e) {
+            log.error("Request server error,cause is: ", e);
+            throw new RaftException("Request server error,cause is: ", e);
         }
 
         return parseResponse(response);
     }
 
 
+    /**
+     * 将payload解析为对应的ResponseCommand
+     *
+     * @param payload response
+     */
     private <T extends ResponseCommand> T parseResponse(Payload payload) {
         ByteString bytes = payload.getBody();
         Metadta metadta = payload.getMetadta();
@@ -89,10 +94,14 @@ public class GrpcClient implements LifeCycle, Requester {
             return JSONObject.parseObject(bytes.toByteArray(), jsonClass);
         }
 
-        throw new UnsupportedOperationException("Cannot serialize class: " + jsonClass.getCanonicalName());
+        throw new RaftSerializeException("Cannot serialize class: {}", jsonClass.getCanonicalName());
     }
 
 
+    /**
+     * 将request 转换为rpc对应的 {@link Payload}
+     * @param request 请求信息
+     */
     private Payload convertRequest(RequestCommand request) {
         Map<String, String> headers = request.getHeaders();
         Metadta metadta = Metadta.newBuilder()

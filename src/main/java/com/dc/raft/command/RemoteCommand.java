@@ -10,5 +10,4 @@ public abstract class RemoteCommand implements Serializable {
         PayloadRegistry.register(this.getClass().getSimpleName(), this.getClass());
     }
 
-
 }

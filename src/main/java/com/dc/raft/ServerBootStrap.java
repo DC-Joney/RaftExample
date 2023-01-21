@@ -5,8 +5,8 @@ import com.dc.raft.handler.RequestHandlerAcceptor;
 import com.dc.raft.node.RaftPeers;
 import com.dc.raft.rpc.GrpcServer;
 import com.google.common.collect.Sets;
+import org.springframework.boot.ApplicationRunner;
 
-import java.net.InetSocketAddress;
 import java.util.Set;
 
 /**
@@ -16,14 +16,16 @@ public class ServerBootStrap extends RemoteBootStrap {
 
     private GrpcServer grpcServer;
 
+    private final int port;
 
     public ServerBootStrap(RaftPeers.PeerNode self, Set<RaftPeers.PeerNode> others) {
         super(self, others);
+        this.port = self.getAddress().getPort();
     }
 
     @Override
     protected void initClient(Set<RequestHandler> requestHandlers) {
-        this.grpcServer = new GrpcServer(raftPeers.getSelf().getAddress().getPort());
+        this.grpcServer = new GrpcServer(port);
         RequestHandlerAcceptor handlerAcceptor = new RequestHandlerAcceptor(requestHandlers);
         grpcServer.setHandlerAcceptor(handlerAcceptor);
         this.grpcServer.start();
@@ -31,23 +33,14 @@ public class ServerBootStrap extends RemoteBootStrap {
 
     @Override
     public void stop() {
+        super.stop();
         grpcServer.stop();
     }
 
     @Override
     protected Set<String> scanPackageHandlers() {
-        return Sets.newHashSet("com.dc.raft.vote","com.dc.raft.heartbeat");
+        return Sets.newHashSet("com.dc.raft.command.vote", "com.dc.raft.command.heartbeat");
     }
 
 
-    public static void main(String[] args) throws Exception {
-        Set<RaftPeers.PeerNode> peerNodes = Sets.newHashSet();
-        for (int port = 8080; port < 8083; port++) {
-            peerNodes.add(RaftPeers.PeerNode.create(new InetSocketAddress("127.0.0.1", port)));
-        }
-
-        for (RaftPeers.PeerNode peerNode : peerNodes) {
-            new ServerBootStrap(peerNode, peerNodes).start();
-        }
-    }
 }

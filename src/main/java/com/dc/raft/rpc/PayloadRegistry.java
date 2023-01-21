@@ -34,7 +34,6 @@ public class PayloadRegistry {
     
     static boolean initialized = false;
 
-
     public static void register(String type, Class<?> clazz) {
         if (Modifier.isAbstract(clazz.getModifiers())) {
             return;

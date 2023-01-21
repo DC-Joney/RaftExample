@@ -14,6 +14,10 @@ public interface RequestHandler {
     ResponseCommand handle(RequestCommand request);
 
 
-    boolean support(Metadta metadta);
+    /**
+     * 判断当前RequestHandler 是否支持对应的 type
+     * @param metadata 元数据
+     */
+    boolean support(Metadta metadata);
 
 }

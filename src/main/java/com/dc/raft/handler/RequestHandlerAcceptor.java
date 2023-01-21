@@ -1,8 +1,10 @@
 package com.dc.raft.handler;
 
+import cn.hutool.core.util.StrUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.dc.raft.command.RequestCommand;
+import com.dc.raft.command.ResponseCode;
 import com.dc.raft.command.ResponseCommand;
 import com.dc.raft.network.Metadta;
 import com.dc.raft.network.Payload;
@@ -11,20 +13,19 @@ import com.google.protobuf.ByteString;
 import io.grpc.stub.StreamObserver;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
+import lombok.extern.slf4j.Slf4j;
 
 import java.nio.charset.Charset;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.List;
 
 /**
  * 用于处理rpc请求，并且返回response
  */
+@Slf4j
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class RequestHandlerAcceptor  {
+public class RequestHandlerAcceptor {
 
     final Collection<RequestHandler> requestHandlers;
-
 
     public RequestHandlerAcceptor(Collection<RequestHandler> requestHandlers) {
         this.requestHandlers = requestHandlers;
@@ -39,22 +40,39 @@ public class RequestHandlerAcceptor  {
 
     public void handleRequest(Payload request, StreamObserver<Payload> responseObserver) {
         Metadta metadta = request.getMetadta();
-        String type = metadta.getType();
-        RequestCommand requestCommand = parseRequest(request);
+        try {
+            RequestCommand requestCommand = parseRequest(request);
+            ResponseCommand responseCommand = requestHandlers.stream()
+                    .filter(requestHandler -> requestHandler.support(metadta))
+                    .findFirst()
+                    .map(handler -> handler.handle(requestCommand))
+                    .orElseGet(this::notFindHandlerCommand);
 
-        ResponseCommand responseCommand = requestHandlers.stream()
-                .filter(requestHandler -> requestHandler.support(metadta))
-                .findFirst()
-                .map(handler-> handler.handle(requestCommand))
-                .orElse(new ResponseCommand() {});
+            Payload payload = convertResponse(responseCommand);
+            responseObserver.onNext(payload);
+        } catch (Exception e) {
+            log.error("Handle requestCommand error, requestType is: {}, error is:", metadta.getType(), e);
+            ResponseCommand responseCommand = getErrorResponseCommand("Handler request error, cause is:", e.getMessage());
+            Payload payload = convertResponse(responseCommand);
+            responseObserver.onNext(payload);
+        }
 
-        Payload payload = convertResponse(responseCommand);
-
-        responseObserver.onNext(payload);
         responseObserver.onCompleted();
     }
 
-    protected  <T extends RequestCommand> T parseRequest(Payload payload) {
+    private ResponseCommand notFindHandlerCommand() {
+        ErrorResponseCommand responseCommand = new ErrorResponseCommand();
+        responseCommand.setErrorInfo(ResponseCode.FAIL.getCode(), "Cannot find requestHandler, please check it");
+        return responseCommand;
+    }
+
+    private ResponseCommand getErrorResponseCommand(String message, Object... args) {
+        ErrorResponseCommand responseCommand = new ErrorResponseCommand();
+        responseCommand.setErrorInfo(ResponseCode.FAIL.getCode(), StrUtil.format(message, args));
+        return responseCommand;
+    }
+
+    protected <T extends RequestCommand> T parseRequest(Payload payload) {
         ByteString bytes = payload.getBody();
         Metadta metadta = payload.getMetadta();
         Class<?> jsonClass = PayloadRegistry.getClassByType(metadta.getType());
@@ -77,5 +95,10 @@ public class RequestHandlerAcceptor  {
         return Payload.newBuilder()
                 .setMetadta(metadta)
                 .setBody(bytes).build();
+    }
+
+    public static class ErrorResponseCommand extends ResponseCommand {
+
+
     }
 }

@@ -17,6 +17,9 @@ import java.nio.charset.StandardCharsets;
 @NoArgsConstructor
 public class LogEntry implements Serializable {
 
+    /**
+     * 日志索引，是连续的
+     */
     private Long index;
 
     /**
@@ -24,8 +27,14 @@ public class LogEntry implements Serializable {
      */
     private long term;
 
+    /**
+     * 日志对应的key
+     */
     private String key;
 
+    /**
+     * 日志对应的value
+     */
     private String value;
 
     private LogEntry(Builder builder) {

@@ -184,9 +184,6 @@ public class JraftClient {
 
         clientService.init(new CliOptions());
 
-
-
-
     }
 
     @Test

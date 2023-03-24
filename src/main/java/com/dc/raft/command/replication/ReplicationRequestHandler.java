@@ -147,10 +147,16 @@ public class ReplicationRequestHandler implements RequestHandler {
                 response.setSuccess(true);
             }
 
+            //如果leader commit > 当前节点commitIndex位置，则将当前节点的commitIndex设置为leader的commitIndex
+            //因为当流程走到这里时，已经保证当前follower与leader节点的数据是一致的了
             //如果 leaderCommit > commitIndex，令 commitIndex 等于 leaderCommit 和 新日志条目索引值中较小的一个
             if (request.getLeaderCommit() > raftNode.getCommitIndex()) {
                 int commitIndex = (int) Math.min(request.getLeaderCommit(), raftNode.getLogStore().getLastIndex());
+
+                //设置当前节点的commitIndex
                 raftNode.setCommitIndex(commitIndex);
+
+                //设置当前节点最终应用到状态机的索引位置
                 raftNode.setLastApplied(commitIndex);
             }
 
